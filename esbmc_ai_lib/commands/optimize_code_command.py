@@ -1,5 +1,8 @@
 # Author: Yiannis Charalambous
 
+import sys
+
+from typing_extensions import override
 from .chat_command import ChatCommand
 from ..frontend import ast
 from ..frontend.ast import FunctionDeclaration
@@ -12,6 +15,7 @@ class OptimizeCodeCommand(ChatCommand):
             help_message="Optimizes the code of a specific function or the entire file if a function is not specified. Usage: optimize-code [function_name]",
         )
 
+    @override
     def execute(
         self, file_path: str, source_code: str, function_names: list[str]
     ) -> None:
@@ -28,7 +32,7 @@ class OptimizeCodeCommand(ChatCommand):
             for function_name in function_names:
                 if function_name not in all_function_names:
                     print(f"Error: {function_name} is not defined...")
-                    exit(1)
+                    sys.exit(1)
         else:
             function_names = all_function_names.copy()
 

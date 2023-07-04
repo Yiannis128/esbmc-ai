@@ -1,0 +1,2 @@
+[HumanMessage(content='Test 2', additional_kwargs={}, example=False), SystemMessage(content='Test 3', additional_kwargs={})]
+[AIMessage(content='Test 1', additional_kwargs={}, example=False), HumanMessage(content='Test 2', additional_kwargs={}, example=False), SystemMessage(content='Test 3', additional_kwargs={})]

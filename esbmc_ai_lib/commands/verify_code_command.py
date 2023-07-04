@@ -1,5 +1,6 @@
 # Author: Yiannis Charalambous
 
+from typing_extensions import override
 from .chat_command import ChatCommand
 
 
@@ -13,5 +14,6 @@ class VerifyCodeCommand(ChatCommand):
     def set_solution(self, source_code: str) -> None:
         print("VerifyCodeCommand (TODO): set_solution")
 
+    @override
     def execute(self) -> None:
         print("TODO")

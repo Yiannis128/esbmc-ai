@@ -1,8 +1,10 @@
 # Author: Yiannis Charalambous 2023
 
-import pytest
+from pytest import raises
 
 import esbmc_ai_lib.config as config
+
+from esbmc_ai_lib.ai_models import is_valid_ai_model
 
 
 def test_load_config_value() -> None:
@@ -51,7 +53,7 @@ def test_load_config_real_number_default_value() -> None:
 
 
 def test_load_config_real_number_wrong_value() -> None:
-    with pytest.raises(TypeError):
+    with raises(TypeError):
         result = config._load_config_real_number(
             {
                 "test": "wrong value",
@@ -62,7 +64,7 @@ def test_load_config_real_number_wrong_value() -> None:
 
 
 def test_load_config_real_number_wrong_value_default() -> None:
-    with pytest.raises(TypeError):
+    with raises(TypeError):
         result = config._load_config_real_number(
             {
                 "test": "wrong value",
@@ -71,3 +73,86 @@ def test_load_config_real_number_wrong_value_default() -> None:
             1.0,
         )
         assert result == None
+
+
+def test_load_custom_ai() -> None:
+    custom_ai_config: dict = {
+        "example_ai": {
+            "max_tokens": 4096,
+            "url": "www.example.com",
+            "config_message": {
+                "template": "example",
+                "system": "{content}",
+                "ai": "{content}",
+                "human": "{content}",
+            },
+        }
+    }
+
+    config._load_custom_ai(custom_ai_config)
+
+    assert is_valid_ai_model("example_ai")
+
+
+def test_load_custom_ai_fail() -> None:
+    # Wrong max_tokens type
+    ai_conf: dict = {
+        "example_ai_2": {
+            "max_tokens": "1024",
+            "url": "www.example.com",
+            "config_message": "example",
+        }
+    }
+
+    with raises(AssertionError):
+        config._load_custom_ai(ai_conf)
+
+    # Wrong max_tokens value
+    ai_conf: dict = {
+        "example_ai_2": {
+            "max_tokens": 0,
+            "url": "www.example.com",
+            "config_message": "example",
+        }
+    }
+
+    with raises(AssertionError):
+        config._load_custom_ai(ai_conf)
+
+    # Missing max_tokens
+    ai_conf: dict = {
+        "example_ai_2": {
+            "url": "www.example.com",
+            "config_message": "example",
+        }
+    }
+
+    with raises(AssertionError):
+        config._load_custom_ai(ai_conf)
+
+    # Missing url
+    ai_conf: dict = {
+        "example_ai_2": {
+            "max_tokens": 0,
+            "config_message": "example",
+        }
+    }
+
+    with raises(AssertionError):
+        config._load_custom_ai(ai_conf)
+
+    # Missing config message
+    ai_conf: dict = {
+        "example_ai_2": {
+            "max_tokens": 0,
+            "url": "www.example.com",
+        }
+    }
+
+    with raises(AssertionError):
+        config._load_custom_ai(ai_conf)
+
+    # Test load empty
+    ai_conf: dict = {}
+
+    config._load_custom_ai(ai_conf)

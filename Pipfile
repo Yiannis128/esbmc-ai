@@ -23,13 +23,17 @@ urllib3 = "==1.26.15"
 yarl = "==1.9.2"
 libclang = "*"
 clang = "*"
+text-generation = "*"
+langchain = {extras = ["llms"], version = "*"}
 
 [dev-packages]
 black = "*"
-pytest = "*"
-pytest-cov = "*"
 pylint = "*"
 ipykernel = "*"
+pytest = "*"
+pytest-cov = "*"
+pytest-regtest = "*"
+py = "*" # Dependency of pytest-regtest
 
 [requires]
 python_version = "3.11"

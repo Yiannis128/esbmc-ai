@@ -4,14 +4,14 @@
 
 import os
 import re
+import sys
 from time import sleep
 
 # Enables arrow key functionality for input(). Do not remove import.
 import readline
 
 import argparse
-from typing import Any, Optional
-import openai
+from langchain.base_language import BaseLanguageModel
 
 import esbmc_ai_lib.config as config
 from esbmc_ai_lib.frontend.solution import set_main_source_file, get_main_source_file
@@ -26,14 +26,11 @@ from esbmc_ai_lib.commands import (
 )
 
 from esbmc_ai_lib.loading_widget import LoadingWidget
-from esbmc_ai_lib.user_chat import ChatInterface, ConversationSummarizerChat
-from esbmc_ai_lib.base_chat_interface import (
-    ChatResponse,
-    FINISH_REASON_LENGTH,
-    FINISH_REASON_STOP,
-)
+from esbmc_ai_lib.user_chat import UserChat
 from esbmc_ai_lib.logging import printv
 from esbmc_ai_lib.esbmc_util import esbmc
+from esbmc_ai_lib.chat_response import FinishReason, json_to_base_message, ChatResponse
+from esbmc_ai_lib.ai_models import _ai_model_names
 
 
 commands: list[ChatCommand] = []
@@ -44,7 +41,7 @@ optimize_code_command: OptimizeCodeCommand = OptimizeCodeCommand()
 verify_code_command: VerifyCodeCommand = VerifyCodeCommand()
 exit_command: ExitCommand = ExitCommand()
 
-chat: ChatInterface
+chat: UserChat
 
 HELP_MESSAGE: str = """Tool that passes ESBMC output into ChatGPT and allows for natural language
 explanations. Type /help in order to view available commands."""
@@ -92,7 +89,7 @@ def init_check_health(verbose: bool) -> None:
         printv("Environment file has been located")
     else:
         print("Error: .env file is not found in project directory")
-        exit(3)
+        sys.exit(3)
 
 
 def check_health() -> None:
@@ -102,7 +99,7 @@ def check_health() -> None:
         printv("ESBMC has been located")
     else:
         print(f"Error: ESBMC could not be found in {config.esbmc_path}")
-        exit(3)
+        sys.exit(3)
 
 
 def get_src(path: str) -> str:
@@ -112,16 +109,11 @@ def get_src(path: str) -> str:
 
 
 def print_assistant_response(
-    chat: ChatInterface,
+    chat: UserChat,
     response: ChatResponse,
-    raw_responses: bool = False,
     hide_stats: bool = False,
 ) -> None:
-    if raw_responses:
-        print(response.base_message)
-        return
-
-    print(f"{response.role}: {response.message}\n\n")
+    print(f"{response.message.type}: {response.message.content}\n\n")
 
     if not hide_stats:
         print(
@@ -177,7 +169,7 @@ def _run_command_mode(
 
         if error:
             print("Failed all attempts...")
-            exit(1)
+            sys.exit(1)
         else:
             print(solution)
     elif command == verify_code_command:
@@ -190,7 +182,7 @@ def _run_command_mode(
         )
     else:
         command.execute()
-    exit(0)
+    sys.exit(0)
 
 
 def parse_command(user_prompt_string: str) -> tuple[str, list[str]]:
@@ -239,18 +231,12 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "-r",
-        "--raw-output",
-        action="store_true",
-        default=False,
-        help="Responses from AI model will be shown raw.",
-    )
-
-    parser.add_argument(
         "-m",
         "--ai-model",
         default="",
-        help="Which AI model to use.",
+        help="Which AI model to use. Built-in models: {"
+        + ", ".join(_ai_model_names)
+        + ", +custom models}",
     )
 
     parser.add_argument(
@@ -307,13 +293,10 @@ def main() -> None:
     if exit_code == 0:
         print("Success!")
         print(esbmc_output)
-        exit(0)
+        sys.exit(0)
     elif exit_code != 1:
         print(f"ESBMC exit code: {exit_code}")
-        exit(1)
-
-    printv("Initializing OpenAI")
-    openai.api_key = config.openai_api_key
+        sys.exit(1)
 
     # Command mode: Check if command is called and call it.
     # If not, then continue to user mode.
@@ -329,45 +312,48 @@ def main() -> None:
                         source_code=source_code,
                         esbmc_output=esbmc_output,
                     )
-            exit(0)
+            sys.exit(0)
 
-    printv("Creating user chat mode summarizer...")
-    chat_summarizer: ConversationSummarizerChat = ConversationSummarizerChat(
-        system_messages=config.chat_prompt_conversation_summarizer.system_messages,
-        ai_model=config.ai_model,
-        temperature=config.chat_prompt_conversation_summarizer.temperature,
+    printv(f"Initializing the LLM: {config.ai_model.name}\n")
+    chat_llm: BaseLanguageModel = config.ai_model.create_llm(
+        api_keys=config.api_keys,
+        temperature=config.chat_prompt_user_mode.temperature,
     )
 
     printv("Creating user chat")
     global chat
-    chat = ChatInterface(
-        system_messages=config.chat_prompt_user_mode.system_messages,
+    chat = UserChat(
+        system_messages=[
+            json_to_base_message(system_message)
+            for system_message in config.chat_prompt_user_mode.system_messages
+        ],
         ai_model=config.ai_model,
-        temperature=config.chat_prompt_user_mode.temperature,
-        summarizer=chat_summarizer,
+        llm=chat_llm,
         source_code=source_code,
         esbmc_output=esbmc_output,
     )
-    printv(f"Using AI Model: {chat.ai_model.name}")
+
+    printv("Initializing commands...")
+    init_commands()
 
     # Show the initial output.
     response: ChatResponse
     if len(config.chat_prompt_user_mode.initial_prompt) > 0:
         printv("Using initial prompt from file...\n")
         anim.start("Model is parsing ESBMC output... Please Wait")
-        response = chat.send_message(config.chat_prompt_user_mode.initial_prompt, True)
+        response = chat.send_message(
+            message=config.chat_prompt_user_mode.initial_prompt,
+            protected=True,
+        )
         anim.stop()
     else:
         raise RuntimeError("User mode initial prompt not found in config.")
 
-    print_assistant_response(chat, response, config.raw_responses)
+    print_assistant_response(chat, response)
     print(
         "ESBMC-AI: Type '/help' to view the available in-chat commands, along",
         "with useful prompts to ask the AI model...",
     )
-
-    printv("Initializing commands...")
-    init_commands()
 
     while True:
         # Get user input.
@@ -417,15 +403,15 @@ def main() -> None:
         else:
             print()
 
-        # User chat mode send message and process
+        # User chat mode send and process current message response.
         while True:
             # Send user message to AI model and process.
             anim.start("Generating response... Please Wait")
             response = chat.send_message(user_message)
             anim.stop()
-            if response.finish_reason == FINISH_REASON_STOP:
+            if response.finish_reason == FinishReason.stop:
                 break
-            elif response.finish_reason == FINISH_REASON_LENGTH:
+            elif response.finish_reason == FinishReason.length:
                 anim.start(
                     "Message stack limit reached. Shortening message stack... Please Wait"
                 )
@@ -442,7 +428,6 @@ def main() -> None:
         print_assistant_response(
             chat,
             response,
-            config.raw_responses,
         )
 
 

@@ -1,8 +1,7 @@
 {
   "ai_model": "gpt-3.5-turbo-16k",
+  "ai_custom": {},
   "esbmc_path": "./esbmc",
-  "cfg_sys_path": "./config/system.json",
-  "cfg_initial_prompt_path": "./config/initial_prompt.txt",
   "esbmc_params": [
     "--interval-analysis",
     "--goto-unwind",
@@ -24,10 +23,10 @@
       "temperature": 1.0,
       "system": [
         {
-          "role": "system",
+          "role": "System",
           "content": "You are a security focused assistant that parses output from a program called ESBMC and explains the output to the user. ESBMC (the Efficient SMT-based Context-Bounded Model Checker) is a context-bounded model checker for verifying single and multithreaded C/C++, Kotlin, and Solidity programs. It can automatically verify both predefined safety properties (e.g., bounds check, pointer safety, overflow) and user-defined program assertions. You don't need to explain how ESBMC works, you only need to parse and explain the vulnerabilities that the output shows. For each line of code explained, say what the line number is as well. Do not answer any questions outside of these explicit parameters. If you understand, reply OK."
         },
-        { "role": "assistant", "content": "OK" }
+        { "role": "AI", "content": "OK" }
       ],
       "initial": "Walk me through the source code, while also explaining the output of ESBMC at the relevant parts. You shall not start the reply with an acknowledgement message such as 'Certainly'."
     },
@@ -35,23 +34,12 @@
       "temperature": 1.1,
       "system": [
         {
-          "role": "system",
+          "role": "System",
           "content": "You are an secure code generator that parses vulnerable source code, and output from a program called ESBMC, which contains vulnerability information about the source code. You should use the output from ESBMC to find the problem, and correct the source code. ESBMC is always correct. You shall add a NULL check for every heap allocation you make. From this point on, you can only reply in source code. You shall only output source code as whole. Reply OK if you understand."
         },
-        { "role": "assistant", "content": "OK" }
+        { "role": "AI", "content": "OK" }
       ],
       "initial": "Generate a correction for the source code provided. Show the code only. Do not reply with acknowledgements."
-    },
-    "conv_summarizer": {
-      "temperature": 1.0,
-      "system": [
-        {
-          "role": "system",
-          "content": "You are a conversation summarizer. Your goal is to summarize conversations between the assistant and the user in an informative and compact way. You can only reply in summaries from now on. Reply OK if you understand."
-        },
-        { "role": "assistant", "content": "OK" }
-      ],
-      "initial": "Summarize the conversation provided."
     }
   }
 }

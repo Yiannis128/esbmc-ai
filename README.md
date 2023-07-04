@@ -1,11 +1,10 @@
 # ESBMC AI
 
-AI Augmented ESBMC processing. Passes the output from ESBMC to an AI model that allows the user to use
-natural language to understand the output. As the output from ESBMC can be quite technical in nature.
-The AI can also be asked other questions, such as suggestions on how to fix the problem outputted by ESBMC,
-and to offer further explanations.
+AI Augmented ESBMC processing. Passes the output from ESBMC to an AI model that allows the user to use natural language to understand the output. As the output from ESBMC can be quite technical in nature. The AI can also be asked other questions, such as suggestions on how to fix the problem outputted by ESBMC, and to offer further explanations.
 
 This is an area of active research.
+
+![ESBMC-AI Virtual Abstract](https://github.com/Yiannis128/esbmc-ai/assets/9535618/45101fa7-2fda-4603-856b-63739acee606)
 
 ## Demonstration
 
@@ -38,38 +37,42 @@ From the [ESBMC GitHub repo](https://github.com/esbmc/esbmc)
 
 > The efficient SMT-based context-bounded model checker (ESBMC)
 
+## Wiki
+
+For full documentation, see the [ESBMC-AI Wiki](https://github.com/Yiannis128/esbmc-ai/wiki). The README file contains quick setup instructions. For more detailed setup instructions, see the [Initial Setup](https://github.com/Yiannis128/esbmc-ai/wiki/Initial-Setup) page.
+
 ## Initial Setup
 
 1. Install required Python modules: `pip3 install -dr requirements.txt`. Alternatively use `pipenv shell` to go into a virtual environment and run `pipenv lock -d` to install dependencies from the Pipfile.
-2. ESBMC-AI does not come with the original ESBMC software. In order to use ESBMC-AI you must provide ESBMC. Download [ESBMC](http://esbmc.org/) executable or build from [source](https://github.com/esbmc/esbmc).
-3. Once the ESBMC software is downloaded, open `config.json` and edit the `esbmc_path` field to specify its location, it's recommended for development purposes to either install it globally or have it in the project root.
-4. Create a `.env` file using the provided `.env.example` as a template (use command `cp .env.example .env`). **Make sure to insert your OpenAI API key inside the `.env` file you just created!**
+2. ESBMC-AI does not come with the original ESBMC software. In order to use ESBMC-AI you must download ESBMC. Download the [ESBMC](http://esbmc.org/) executable or build from [source](https://github.com/esbmc/esbmc).
+3. Once the ESBMC software is downloaded, open the `config.json` file, and edit the `esbmc_path` field to specify the location of ESBMC, it's recommended for development purposes to either install it globally or have it in the project root folder.
+4. Create a `.env` file using the provided `.env.example` as a template. **Make sure to insert your OpenAI API and Hugging Face key inside the `.env` file you just created!**
 5. Further, adjust `.env` settings as required.
 6. Further, adjust the `config.json` file as required. Be careful when editing AI model messages as incorrect messages can break the flow of the program, or introduce incorrect results. In general, it's recommended to leave those options alone.
-7. You can now run ESBMC-AI.
+7. You can now run ESBMC-AI. See usage instructions below.
 
 ## Settings
 
 ### .env
 
-The following settings are adjustable in the .env file. **Some settings are allowed to be omitted, however, the program will display a warning when done so as it is not a recommended practice**. This list may be incomplete:
+The `.env` file contains the configuration of sensitive data. An example `.env.example` file is given as a template. It should be renamed into `.env` in order to be used by the program. The following settings are adjustable in the .env file:
 
 1. `OPENAI_API_KEY`: Your OpenAI API key.
-2. `ESBMC_AI_CFG_PATH`: ESBMC AI requires a path to a JSON config file, the default path is `./config.json`. This can be changed to another path, if there is a preference for multiple files.
+2. `HUGGINGFACE_API_KEY`: Your Hugging Face API key.
+3. `ESBMC_AI_CFG_PATH`: ESBMC AI requires a path to a JSON config file, the default path is `./config.json`. This can be changed to another path, if there is a preference for multiple files.
 
 ### config.json
 
-The following settings are adjustable in the `config.json` file. **Some settings are allowed to be omitted, however, the program will display a warning when done so as it is not a recommended practice**. This list may be incomplete:
+The following settings are adjustable in the `config.json` file:
 
-1. `chat_temperature`: The temperature parameter used when calling the chat completion API. This controls the temperature sampling that the model uses. Higher values like 0.8 and above will make the output more random, on the other hand, lower values like 0.2 will be more deterministic. **Allowed values are between 0.0 to 2.0**. Default is 1.0
-2. `ai_model`: The model to use. Options: `gpt-3.5-turbo`, `gpt-4` (under API key conditions).
+1. `ai_model`: The model to use. List of models available [here](https://github.com/Yiannis128/esbmc-ai/wiki/AI-Models).
+2. `ai_custom`: Allows for specifying custom `text-generation-inference` servers to use. For more information see [the wiki page](https://github.com/Yiannis128/esbmc-ai/wiki/AI-Models#custom-llm).
 3. `esbmc_path`: Override the default ESBMC path. Leave blank to use the default ("./esbmc").
-4. `cfg_sys_path`: Path to JSON file that contains initial prompt messages for the AI model that give it instructions on how to function.
-5. `cfg_initial_prompt_path`: Text file that contains the instructions to initiate the initial prompt, where the AI is asked to walk through the code and explain the ESBMC output.
-6. `esbmc_params`: Array of strings. This represents the default ESBMC parameters to use when calling ESBMC, these will be used only when no parameters are specified after the filename. **Do not specify a source file to scan in here as ESBMC-AI will inject that in the ESBMC parameters itself**.
-7. `prompts`: Contains the prompts that will be used when setting up/interacting with the AI.
-   1. `system`: Array of initial system messages that instruct the AI what its function is. Each element in the array is a struct that contains a `role` field (should ideally be system/assistant) and a `content` field that describes what that role's message content are. This should be a conversation between system and assistant.
-   2. `initial`: String that describes the initial prompt given to the AI, after it has read the source code, and the ESBMC output. This field should ask the AI model to explain the source code and ESBMC output.
+4. `esbmc_params`: Array of strings. This represents the default ESBMC parameters to use when calling ESBMC, these will be used only when no parameters are specified after the filename. **Do not specify a source file to scan in here as ESBMC-AI will inject that in the ESBMC parameters itself**.
+5. `consecutive_prompt_delay`: Rate limit wait time for API calls.
+6. `temp_auto_clean`: Boolean value describing if to clean temporary files from the temporary directory as soon as they are not needed.
+7. `temp_file_dir`: The directory to save temporary files in.
+8. `chat_modes`: Contains settings that belong to each individual chat mode. It is not recommended to change these as changing them will impact the effectiveness of the LLMs.
 
 ## Usage
 
@@ -151,12 +154,17 @@ Type the following command when inside the chat:
 Pull requests are welcome. For major changes, please open an issue first
 to discuss what you would like to change.
 
-Please make sure to update tests as appropriate.
+1. Keep the coding style consistent. Use the [Black](https://pypi.org/project/black/) code formatter.
+2. Keep the righting style professional.
+3. Include comments and function doc-strings.
+4. Make sure to update tests as appropriate.
 
 ## Acknowledgments
 
 - [ESBMC](https://github.com/esbmc/esbmc)
 - [OpenAI Chat API](https://platform.openai.com/docs/guides/chat)
+- [Technology Innovation Institute](https://www.tii.ae/)
+- [Hugging Face](https://huggingface.co/)
 
 ## License
 

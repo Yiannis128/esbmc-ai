@@ -2,14 +2,16 @@
 
 import os
 import json
+import sys
 from typing import Any, NamedTuple, Union
 from dotenv import load_dotenv
 
 from .logging import *
 from .ai_models import *
+from .api_key_collection import APIKeyCollection
 
-openai_api_key: str = ""
-raw_responses: bool = False
+
+api_keys: APIKeyCollection
 
 esbmc_path: str = "./esbmc"
 esbmc_params: list[str] = [
@@ -29,7 +31,7 @@ esbmc_params: list[str] = [
 temp_auto_clean: bool = True
 temp_file_dir: str = "."
 consecutive_prompt_delay: float = 20.0
-ai_model: AIModel = AI_MODEL_GPT3
+ai_model: AIModel = AIModels.GPT_3.value
 
 cfg_path: str = "./config.json"
 
@@ -42,14 +44,73 @@ class ChatPromptSettings(NamedTuple):
 
 chat_prompt_user_mode: ChatPromptSettings
 chat_prompt_generator_mode: ChatPromptSettings
-chat_prompt_conversation_summarizer: ChatPromptSettings
+
+
+def _load_custom_ai(config: dict) -> None:
+    ai_custom: dict = config
+    for name, ai_data in ai_custom.items():
+        # Load the max tokens
+        custom_ai_max_tokens, ok = _load_config_value(
+            config_file=ai_data,
+            name="max_tokens",
+        )
+        assert ok, f'max_tokens field not found in "ai_custom" entry "{name}".'
+        assert (
+            isinstance(custom_ai_max_tokens, int) and custom_ai_max_tokens > 0
+        ), f'custom_ai_max_tokens in ai_custom entry "{name}" needs to be an int and greater than 0.'
+        # Load the URL
+        custom_ai_url, ok = _load_config_value(
+            config_file=ai_data,
+            name="url",
+        )
+        assert ok, f'url field not found in "ai_custom" entry "{name}".'
+        stop_sequences, ok = _load_config_value(
+            config_file=ai_data,
+            name="stop_sequences",
+        )
+        # Load the config message
+        config_message: dict[str, str] = ai_data["config_message"]
+        template, ok = _load_config_value(
+            config_file=config_message,
+            name="template",
+        )
+        human, ok = _load_config_value(
+            config_file=config_message,
+            name="human",
+        )
+        ai, ok = _load_config_value(
+            config_file=config_message,
+            name="ai",
+        )
+        system, ok = _load_config_value(
+            config_file=config_message,
+            name="system",
+        )
+
+        # Add the custom AI.
+        add_custom_ai_model(
+            AIModelTextGen(
+                name=name,
+                tokens=custom_ai_max_tokens,
+                url=custom_ai_url,
+                config_message=template,
+                ai_template=ai,
+                human_template=human,
+                system_template=system,
+                stop_sequences=stop_sequences,
+            )
+        )
 
 
 def load_envs() -> None:
     load_dotenv(dotenv_path="./.env", override=True, verbose=True)
 
-    global openai_api_key
-    openai_api_key = str(os.getenv("OPENAI_API_KEY"))
+    global api_keys
+
+    api_keys = APIKeyCollection(
+        openai=str(os.getenv("OPENAI_API_KEY")),
+        huggingface=str(os.getenv("HUGGINGFACE_API_KEY")),
+    )
 
     global cfg_path
     value = os.getenv("ESBMC_AI_CFG_PATH")
@@ -58,7 +119,7 @@ def load_envs() -> None:
             cfg_path = str(value)
         else:
             print(f"Error: Invalid .env ESBMC_AI_CFG_PATH value: {value}")
-            exit(4)
+            sys.exit(4)
     else:
         print(
             f"Warning: ESBMC_AI_CFG_PATH not found in .env file... Defaulting to {cfg_path}"
@@ -92,7 +153,7 @@ def _load_config_real_number(
 def load_config(file_path: str) -> None:
     if not os.path.exists(file_path):
         print(f"Error: Config not found: {file_path}")
-        exit(4)
+        sys.exit(4)
 
     config_file = None
     with open(file_path, mode="r") as file:
@@ -126,19 +187,21 @@ def load_config(file_path: str) -> None:
         temp_file_dir,
     )
 
+    # Load the custom ai configs.
+    _load_custom_ai(config_file["ai_custom"])
+
     global ai_model
     ai_model_name, _ = _load_config_value(
         config_file,
         "ai_model",
         ai_model,
     )
-    if not is_valid_ai_model(ai_model_name):
-        print(f"Error: {ai_model_name} is not a valid AI model")
-        exit(4)
+    if is_valid_ai_model(ai_model_name):
+        # Load the ai_model from loaded models.
+        ai_model = get_ai_model_by_name(ai_model_name)
     else:
-        for model in models:
-            if ai_model_name == model.name:
-                ai_model = model
+        print(f"Error: {ai_model_name} is not a valid AI model")
+        sys.exit(4)
 
     global esbmc_path
     # Health check verifies this later in the init process.
@@ -150,7 +213,6 @@ def load_config(file_path: str) -> None:
 
     # Load the AI data from the file that will command the AI for all modes.
     printv("Initializing AI data")
-    # TODO Add checking here.
     global chat_prompt_user_mode
     chat_prompt_user_mode = ChatPromptSettings(
         system_messages=config_file["chat_modes"]["user_chat"]["system"],
@@ -165,28 +227,17 @@ def load_config(file_path: str) -> None:
         temperature=config_file["chat_modes"]["generate_solution"]["temperature"],
     )
 
-    global chat_prompt_conversation_summarizer
-    chat_prompt_conversation_summarizer = ChatPromptSettings(
-        system_messages=config_file["chat_modes"]["conv_summarizer"]["system"],
-        initial_prompt=config_file["chat_modes"]["conv_summarizer"]["initial"],
-        temperature=config_file["chat_modes"]["conv_summarizer"]["temperature"],
-    )
-
 
 def load_args(args) -> None:
-    global verbose
-    verbose = args.verbose
-
-    global raw_responses
-    raw_responses = args.raw_output
+    set_verbose(1 if args.verbose else 0)
 
     global ai_model
     if args.ai_model != "":
         if is_valid_ai_model(args.ai_model):
-            ai_model = args.ai_model
+            ai_model = get_ai_model_by_name(args.ai_model)
         else:
             print(f"Error: invalid --ai-model parameter {args.ai_model}")
-            exit(4)
+            sys.exit(4)
 
     global esbmc_params
     # If append flag is set, then append.

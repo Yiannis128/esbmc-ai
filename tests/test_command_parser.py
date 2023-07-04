@@ -1,5 +1,3 @@
-import pytest
-
 from esbmc_ai_lib.__main__ import parse_command
 
 
