@@ -1,8 +1,9 @@
 #include <assert.h>
+$includes
 
-// {FUNCTION_OLD}
+$function_old
 
-// {FUNCTION_NEW}
+$function_new
 
 int main()
 {

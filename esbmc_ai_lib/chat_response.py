@@ -44,3 +44,8 @@ def json_to_base_message(json_string: dict) -> BaseMessage:
         return HumanMessage(content=content)
     else:
         raise Exception()
+
+
+def json_to_base_messages(json_messages: list[dict]) -> list[BaseMessage]:
+    """Converts a list of messages from JSON format to a list of BaseMessage."""
+    return [json_to_base_message(msg) for msg in json_messages]

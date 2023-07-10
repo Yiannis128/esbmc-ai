@@ -2,6 +2,8 @@
   "files.associations": {
     "*.bibi": "xml",
     "*.exc": "xml",
-    "cstdlib": "c"
+    "cstdlib": "c",
+    "assert.h": "c",
+    "pthread.h": "c"
   }
 }

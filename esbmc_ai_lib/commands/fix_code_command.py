@@ -7,7 +7,7 @@ from langchain.schema import AIMessage, HumanMessage
 
 from esbmc_ai_lib.chat_response import (
     FinishReason,
-    json_to_base_message,
+    json_to_base_messages,
 )
 
 
@@ -47,10 +47,9 @@ class FixCodeCommand(ChatCommand):
         )
 
         solution_generator = SolutionGenerator(
-            system_messages=[
-                json_to_base_message(msg)
-                for msg in config.chat_prompt_generator_mode.system_messages
-            ],
+            system_messages=json_to_base_messages(
+                config.chat_prompt_generator_mode.system_messages
+            ),
             initial_prompt=config.chat_prompt_generator_mode.initial_prompt,
             source_code=source_code,
             esbmc_output=esbmc_output,

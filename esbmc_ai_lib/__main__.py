@@ -29,7 +29,7 @@ from esbmc_ai_lib.loading_widget import LoadingWidget, create_loading_widget
 from esbmc_ai_lib.user_chat import UserChat
 from esbmc_ai_lib.logging import printv, printvv
 from esbmc_ai_lib.esbmc_util import esbmc
-from esbmc_ai_lib.chat_response import FinishReason, json_to_base_message, ChatResponse
+from esbmc_ai_lib.chat_response import FinishReason, json_to_base_messages, ChatResponse
 from esbmc_ai_lib.ai_models import _ai_model_names
 
 
@@ -329,10 +329,9 @@ def main() -> None:
     printv("Creating user chat")
     global chat
     chat = UserChat(
-        system_messages=[
-            json_to_base_message(system_message)
-            for system_message in config.chat_prompt_user_mode.system_messages
-        ],
+        system_messages=json_to_base_messages(
+            config.chat_prompt_user_mode.system_messages
+        ),
         ai_model=config.ai_model,
         llm=chat_llm,
         source_code=source_code,
