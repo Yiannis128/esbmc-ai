@@ -17,7 +17,6 @@ from esbmc_ai_lib import config
 
 class LoadingWidget(object):
     done: bool = False
-    thread: Optional[Thread]
     loading_text: str
     animation: list[str]
     anim_speed: float
@@ -29,6 +28,8 @@ class LoadingWidget(object):
         animation: list[str] = ["|", "/", "-", "\\"],
     ) -> None:
         super().__init__()
+        self.thread: Optional[Thread] = None
+
         self.anim_speed = anim_speed
         self.animation = animation
 

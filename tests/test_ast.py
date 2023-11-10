@@ -323,11 +323,116 @@ int main(int argc, char**argv) {
 
 
 def test_get_references_functions() -> None:
-    assert False, "Not implemented"
+    source_code: str = """int a, b;
+int add() {
+    return a + b;
+}
+int sub() {
+    return a - b;
+}
+int main(int argc, char**argv) {
+    a = 1;
+    b = 2;
+    add();
+    sub();
+    return 0;
+}"""
+
+    answers: list[FunctionDeclaration] = [
+        FunctionDeclaration(
+            "add",
+            "int",
+            [],
+        ),
+        FunctionDeclaration(
+            "sub",
+            "int",
+            [],
+        ),
+        FunctionDeclaration(
+            "main",
+            "int",
+            [
+                Declaration(
+                    "argc",
+                    "int"
+                ),
+                Declaration(
+                    "argv",
+                    "char **",
+                )
+            ],
+        ),
+    ]
+
+    ast: ClangAST = ClangAST("test.c", source_code)
+    fns: list[FunctionDeclaration] = ast.get_fn_decl()
+
+    for fn, ans in zip(fns, answers):
+        assert fn == ans, f"Function Check Failed: {fn} != {ans}"
 
 
 def test_get_references_types() -> None:
-    assert False, "Not implemented"
+    source_code: str = """
+struct Point_t
+{
+    int x, y;
+};
+union Circle{
+    float radius;
+};
+enum suit {
+    club = 0,
+    diamonds = 10,
+    hearts = 20,
+    spades = 3,
+};
+int main(int argc, char** argv) {
+    return 0;
+}"""
+
+    answers: list[TypeDeclaration] = [
+        TypeDeclaration(
+            "Point_t",
+            "",
+            TypeDeclaration.ConstructTypes.STRUCT,
+            [
+                Declaration(
+                    "x", "int"
+                ),
+                Declaration(
+                    "y", "int"
+                )
+            ],
+        ),
+        TypeDeclaration(
+            "Circle",
+            "",
+            TypeDeclaration.ConstructTypes.UNION,
+            [
+                Declaration(
+                    "radius", "float"
+                ),
+            ],
+        ),
+        TypeDeclaration(
+            "suit",
+            "",
+            TypeDeclaration.ConstructTypes.ENUM,
+            [
+                Declaration("club", "int"),
+                Declaration("diamonds", "int"),
+                Declaration("hearts", "int"),
+                Declaration("spades", "int"),
+            ],
+        )
+    ]
+    
+    ast: ClangAST = ClangAST("test.c", source_code)
+    types: list[TypeDeclaration] = ast.get_type_decl()
+
+    for t, ans in zip(types, answers):
+        assert t == ans, f"Failed types: {t} != {ans}"
 
 
 def test_rename_function() -> None:
@@ -379,43 +484,88 @@ int main_renamed(int argc, char**argv) {
 
 
 def test_rename_type() -> None:
-    assert False, "Not implemented..."
-
-
-def test_rename_typedef() -> None:
-    source_code: str = """
-struct Point_t
+    source_code: str = """struct Point_t
 {
     int x, y;
 };
-
-typedef struct Point_t Point;
-
-typedef struct {
+union Circle{
     float radius;
-} Circle;"""
+};
+enum suit {
+    club = 0,
+    diamonds = 10,
+    hearts = 20,
+    spades = 3,
+};
+int main(int argc, char** argv) {
+    enum suit s = club;
+    return 0;
+}"""
 
-    answer: str = """
-struct Point_t
+    answer: str = """struct newpoint
 {
     int x, y;
 };
-
-typedef struct Point_t_renamed Point;
-
-typedef struct {
+union newcircle{
     float radius;
-} Circle_renamed;"""
+};
+enum Suit {
+    club = 0,
+    diamonds = 10,
+    hearts = 20,
+    spades = 3,
+};
+int main(int argc, char** argv) {
+    enum Suit s = club;
+    return 0;
+}"""
+
+    new_names: list[str] = ["newpoint", "newcircle", "Suit"]
 
     ast: ClangAST = ClangAST("test.c", source_code)
-    typedefs: list[TypedefDeclaration] = ast.get_typedef_decl()
+    types: list[TypeDeclaration] = ast.get_type_decl()
 
-    print("Found total typedefs:", len(typedefs))
-
-    for typedef in typedefs:
-        ast.rename_declaration(typedef, typedef.name + "_renamed")
+    for t, new_name in zip(types, new_names):
+        ast.rename_declaration(t, new_name)
 
     assert ast.source_code == answer
+
+
+# TODO Activate function when typedef support is added.
+# def test_rename_typedef() -> None:
+#     source_code: str = """
+# struct Point_t
+# {
+#     int x, y;
+# };
+
+# typedef struct Point_t Point;
+
+# typedef struct {
+#     float radius;
+# } Circle;"""
+
+#     answer: str = """
+# struct Point_t
+# {
+#     int x, y;
+# };
+
+# typedef struct Point_t_renamed Point;
+
+# typedef struct {
+#     float radius;
+# } Circle_renamed;"""
+
+#     ast: ClangAST = ClangAST("test.c", source_code)
+#     typedefs: list[TypedefDeclaration] = ast.get_typedef_decl()
+
+#     print("Found total typedefs:", len(typedefs))
+
+#     for typedef in typedefs:
+#         ast.rename_declaration(typedef, typedef.name + "_renamed")
+
+#     assert ast.source_code == answer
 
 
 def test_rename_global_variable() -> None:

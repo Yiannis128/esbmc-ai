@@ -25,6 +25,7 @@ libclang = "*"
 clang = "*"
 text-generation = "*"
 langchain = {extras = ["llms"], version = "*"}
+pydantic = "==1.10.13"
 
 [dev-packages]
 black = "*"

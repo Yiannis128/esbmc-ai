@@ -2,15 +2,15 @@
 
 import os
 import sys
-from os import get_terminal_size
-from typing import Iterable, Optional, Tuple
+from typing import Optional, Tuple
 from typing_extensions import override
 from string import Template
 from random import randint
 
+from esbmc_ai_lib.term import get_terminal_width
 from esbmc_ai_lib.chat_response import json_to_base_messages
 from esbmc_ai_lib.frontend.ast_decl import Declaration, TypeDeclaration
-from esbmc_ai_lib.frontend.c_types import is_primitive_type
+from esbmc_ai_lib.frontend.c_types import is_primitive_type, get_base_type
 from esbmc_ai_lib.frontend.esbmc_code_generator import ESBMCCodeGenerator
 from esbmc_ai_lib.esbmc_util import esbmc_load_source_code
 from esbmc_ai_lib.msg_bus import Signal
@@ -20,7 +20,7 @@ from .. import config
 from ..base_chat_interface import ChatResponse
 from ..optimize_code import OptimizeCode
 from ..frontend import ast
-from ..frontend.ast import FunctionDeclaration
+from ..frontend.ast import ClangAST, FunctionDeclaration
 from ..logging import printvv
 
 
@@ -33,6 +33,10 @@ class OptimizeCodeCommand(ChatCommand):
             help_message="(EXPERIMENTAL) Optimizes the code of a specific function or the entire file if a function is not specified. Usage: optimize-code [function_name]",
         )
         self.on_solution_signal: Signal = Signal()
+
+    @staticmethod
+    def _generate_param_name(d: Declaration) -> str:
+        return f"param_{d.type_name.replace(' ', '_').replace('*', 'ptr')}_{randint(a=0, b=99999)}"
 
     def _get_functions_list(
         self,
@@ -57,6 +61,62 @@ class OptimizeCodeCommand(ChatCommand):
         else:
             function_names = all_function_names.copy()
         return function_names
+
+    def _generate_primitive_type_variables(
+        self,
+        elements: list[Declaration],
+        code_gen: ESBMCCodeGenerator,
+        max_depth: int = 10,
+        _current_depth: int = -1,
+    ) -> tuple[list[str], list[str]]:
+        """Generates the initialization values for a list of Declarations.
+        Starts by traversing the parameters of a function depth first, as soon
+        as a primitive type is reached, a variable is initialized using
+        __VERIFIER_nondet_X() as the value.
+        The names of the variables, along with the declaration statement is returned."""
+
+        ast: ClangAST = code_gen.ast
+
+        names: list[str] = []
+        statements: list[str] = []
+
+        _current_depth += 1
+
+        for arg in elements:
+            assert arg.cursor, f"Element {elements} has no valid cursor."
+
+            if is_primitive_type(arg):
+                name: str = OptimizeCodeCommand._generate_param_name(arg)
+                statement = code_gen.statement_primitive_construct(
+                    d=arg,
+                    assign_to=name,
+                    init=True,
+                )
+                names.append(name)
+                statements.append(statement)
+            else:
+                arg_type: Optional[
+                    TypeDeclaration
+                ] = ast._get_type_declaration_from_cursor(arg.cursor)
+                assert arg_type, f"Assert failed: {arg}"
+
+                if _current_depth < max_depth:
+                    # Traverse tree
+                    n, s = self._generate_primitive_type_variables(
+                        elements=arg_type.elements,
+                        code_gen=code_gen,
+                        max_depth=max_depth,
+                        _current_depth=_current_depth,
+                    )
+
+                    names.extend(n)
+                    statements.extend(s)
+                else:
+                    # Generate NULL
+                    names.append("NULL")
+                    statements.append("")
+
+        return names, statements
 
     def _build_comparison_script(
         self,
@@ -110,72 +170,69 @@ class OptimizeCodeCommand(ChatCommand):
         code_gen_old: ESBMCCodeGenerator = ESBMCCodeGenerator(old_ast)
         code_gen_new: ESBMCCodeGenerator = ESBMCCodeGenerator(new_ast)
 
-        # This Callable is used to record the primitive types that the parameters of each
-        # function take. They will be injected into the main method and supplied to
-        # both old and new function calls. Since they have the same function, they will
-        # generate the same code.
-        def primitive_assignemnt_old(decl: Declaration) -> str:
-            name: str = (
-                f"param_{decl.type_name.replace(' ', '')}_{randint(a=0, b=99999)}"
-            )
-            statement: str = code_gen_old.statement_primitive_construct(
-                d=decl,
-                assign_to=name,
-                init=True,
-            )
-            decl_statements.append(statement)
-            decl_statement_names.append(name)
-
-            return name
-
-        def primitive_assignemnt_new(_: Declaration) -> str:
-            return decl_statement_names.pop(0)
-
         # Generate parameters using same function call of __VERIFIER_nondet_X for primitives.
         # The parameters will be inlined into the function.
+
+        # Variable names of primitive values.
+        primitive_vars_names: list[str] = []
         # Declaration statements for the variables
-        decl_statements: list[str] = []
-        # Name of the variables
-        decl_statement_names: list[str] = []
-        # Params for each function
+        statements: list[str] = []
+        primitive_vars_names, statements = self._generate_primitive_type_variables(
+            elements=old_function.args,
+            code_gen=code_gen_old,
+            max_depth=config.ocm_init_max_depth,
+        )
+
+        # Function parameters.
         fn_params_old: list[str] = []
         fn_params_new: list[str] = []
+
+        # Generate function parameter values.
+        param_idx: int = 0
         for arg_old, arg_new in zip(old_function.args, new_function.args):
             # Convert to type
             assert arg_old.cursor and arg_new.cursor
 
-            if is_primitive_type(arg_old.type_name):
-                name: str = f"param_{arg_old.type_name.replace(' ', '')}_{randint(a=0, b=99999)}"
-                statement = code_gen_old.statement_primitive_construct(
-                    d=arg_old,
-                    assign_to=name,
-                    init=True,
-                )
-                fn_params_old.append(name)
-                fn_params_new.append(name)
-
-                decl_statements.append(statement)
+            # If it's a primitive type, then no need to call the code generator,
+            # can simply add name of primitive value.
+            if is_primitive_type(arg_old):
+                fn_params_old.append(primitive_vars_names[param_idx])
+                fn_params_new.append(primitive_vars_names[param_idx])
+                param_idx += 1
             else:
+                if arg_old.is_pointer_type():
+                    pass
+
                 arg_old_type: Optional[
                     TypeDeclaration
                 ] = old_ast._get_type_declaration_from_cursor(arg_old.cursor)
                 arg_new_type: Optional[
                     TypeDeclaration
                 ] = new_ast._get_type_declaration_from_cursor(arg_new.cursor)
-                assert arg_old_type and arg_new_type
+                assert (
+                    arg_old_type and arg_new_type
+                ), f"Assert failed: {arg_old} or {arg_new}"
+
                 # Create statements and save them.
                 statement_old = code_gen_old.statement_type_construct(
-                    d=arg_old_type,
+                    d_type=arg_old_type,
+                    init_type="ptr" if arg_old.is_pointer_type() else "value",
                     init=False,
-                    primitive_assignment_fn=primitive_assignemnt_old,
+                    primitive_assignment_fn=lambda _: primitive_vars_names[param_idx],
+                    max_depth=config.ocm_init_max_depth,
                 )
                 fn_params_old.append(statement_old)
+
                 statement_new = code_gen_new.statement_type_construct(
-                    d=arg_new_type,
+                    d_type=arg_new_type,
+                    init_type="ptr" if arg_new.is_pointer_type() else "value",
                     init=False,
-                    primitive_assignment_fn=primitive_assignemnt_new,
+                    primitive_assignment_fn=lambda _: primitive_vars_names[param_idx],
+                    max_depth=config.ocm_init_max_depth,
                 )
                 fn_params_new.append(statement_new)
+
+                param_idx += 1
 
         # Generate the function call & arguments
         old_params_src: str = code_gen_old.statement_function_call(
@@ -191,10 +248,12 @@ class OptimizeCodeCommand(ChatCommand):
             init=True,
         )
 
+        # TODO Dereference fn result if pointer.
+
         script: str = template.substitute(
             function_old=old_ast.source_code,
             function_new=new_ast.source_code,
-            parameters_list="\n".join(decl_statements),
+            parameters_list="\n".join(statements),
             function_call_old=old_params_src,
             function_call_new=new_params_src,
             function_assert_old="old_fn_result",
@@ -224,26 +283,14 @@ class OptimizeCodeCommand(ChatCommand):
         )
 
         # Get list of function types.
-        # TODO: Need to double check that set needs to be used instead of list here
-        # as the list may return duplicates.
         old_functions: list[FunctionDeclaration] = original_ast.get_fn_decl()
         new_functions: list[FunctionDeclaration] = new_ast.get_fn_decl()
 
-        # Need to ensure that the functions have the same composition:
-        def get_function_from_collection(
-            function_name: str,
-            functions: Iterable[FunctionDeclaration],
-        ) -> Optional[FunctionDeclaration]:
-            for fn in functions:
-                if fn.name == function_name:
-                    return fn
-            return None
-
         # First get original function declaration from source code.
-        old_function: Optional[FunctionDeclaration] = get_function_from_collection(
-            function_name=function_name,
-            functions=old_functions,
-        )
+        old_function: Optional[FunctionDeclaration] = None
+        for fn in old_functions:
+            if fn.name == function_name:
+                old_function = fn
 
         if old_function is None:
             return False
@@ -252,10 +299,11 @@ class OptimizeCodeCommand(ChatCommand):
         # function declarations will ensure that args are also checked.
         new_function: Optional[FunctionDeclaration] = None
         for fn in new_functions:
-            if old_function.is_equivalent(fn):
+            if old_function == fn:
                 new_function = fn
 
         if new_function is None:
+            print(f"Error: Could not match new function to old one...")
             return False
 
         esbmc_script: str = self._build_comparison_script(
@@ -341,9 +389,9 @@ class OptimizeCodeCommand(ChatCommand):
                 )
 
                 printvv(f"\nGeneration ({fn_name}):")
-                printvv("-" * get_terminal_size().columns)
-                printvv(new_source_code)
-                printvv("-" * get_terminal_size().columns)
+                printvv("-" * get_terminal_width())
+                printvv(optimized_source_code)
+                printvv("-" * get_terminal_width())
 
                 # Check equivalence
                 equal: bool = self.check_function_pequivalence(

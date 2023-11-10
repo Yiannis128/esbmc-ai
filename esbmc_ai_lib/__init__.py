@@ -2,4 +2,4 @@
 Software Bounded Model Checker. With the power of LLMs, it adds
 features such as automatic code fixing and more."""
 
-version: str = "0.3.0"
+version: str = "0.3.1"

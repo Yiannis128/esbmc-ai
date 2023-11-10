@@ -1,6 +1,5 @@
 # Author: Yiannis Charalambous
 
-from os import get_terminal_size
 from time import sleep
 from typing import Tuple
 from typing_extensions import override
@@ -11,6 +10,7 @@ from esbmc_ai_lib.chat_response import (
     json_to_base_messages,
 )
 
+from esbmc_ai_lib.term import get_terminal_width
 
 from .chat_command import ChatCommand
 from .. import config
@@ -33,7 +33,11 @@ class FixCodeCommand(ChatCommand):
 
     @override
     def execute(
-        self, file_name: str, source_code: str, esbmc_output: str
+        self,
+        file_name: str,
+        source_code: str,
+        esbmc_output: str,
+        max_retries: int = 10,
     ) -> Tuple[bool, str]:
         wait_time: int = int(config.consecutive_prompt_delay)
         # Create time left animation to show how much time left between API calls
@@ -62,7 +66,6 @@ class FixCodeCommand(ChatCommand):
 
         print()
 
-        max_retries: int = 10
         for idx in range(max_retries):
             # Get a response. Use while loop to account for if the message stack
             # gets full, then need to compress and retry.
@@ -81,9 +84,9 @@ class FixCodeCommand(ChatCommand):
 
             # Print verbose lvl 2
             printvv("\nGeneration:")
-            printvv("-" * get_terminal_size().columns)
+            printvv("-" * get_terminal_width())
             printvv(response)
-            printvv("-" * get_terminal_size().columns)
+            printvv("-" * get_terminal_width())
             printvv("")
 
             # Pass to ESBMC, a workaround is used where the file is saved
@@ -98,10 +101,10 @@ class FixCodeCommand(ChatCommand):
             self.anim.stop()
 
             # Print verbose lvl 2
-            printvv("-" * get_terminal_size().columns)
+            printvv("-" * get_terminal_width())
             printvv(esbmc_output)
             printvv(esbmc_err_output)
-            printvv("-" * get_terminal_size().columns)
+            printvv("-" * get_terminal_width())
 
             if exit_code == 0:
                 self.on_solution_signal.emit(response)

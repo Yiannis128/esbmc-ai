@@ -3,7 +3,7 @@
 import os
 import json
 import sys
-from typing import Any, NamedTuple, Union
+from typing import Any, NamedTuple, Optional, Union, Literal
 from dotenv import load_dotenv
 
 from .logging import *
@@ -57,6 +57,15 @@ esbmc_params_optimize_code: list[str] = [
     "--no-pointer-check",
     "--no-div-by-zero-check",
 ]
+
+ocm_array_expansion: int
+"""Used for allocating continuous memory. Arrays and pointers will be initialized using this."""
+ocm_init_max_depth: int
+"""Max depth that structs will be initialized into, afterwards initializes with NULL."""
+ocm_partial_equivalence_check: Literal["basic", "deep"] = "basic"
+"""Mode to check for partial equivalence on the return value."""
+fix_code_max_attempts: int = 10
+"""Max attempts to fix a code."""
 
 
 def _load_custom_ai(config: dict) -> None:
@@ -115,8 +124,20 @@ def _load_custom_ai(config: dict) -> None:
         )
 
 
-def load_envs() -> None:
-    load_dotenv(dotenv_path="./.env", override=True, verbose=True)
+def load_envs(env_override: Optional[str]) -> None:
+    env_file_path: str = env_override if env_override else "./.env"
+    # Check that the .env file exists.
+    if os.path.exists(env_file_path):
+        printv("Environment file has been located")
+    else:
+        print("Error: .env file is not found in project directory")
+        sys.exit(3)
+
+    load_dotenv(
+        dotenv_path=env_file_path,
+        override=True,
+        verbose=True,
+    )
 
     global api_keys
 
@@ -227,6 +248,36 @@ def load_config(file_path: str) -> None:
         config_file,
         "loading_hints",
         True,
+    )
+
+    global ocm_array_expansion
+    ocm_array_expansion, _ = _load_config_value(
+        config_file=config_file["chat_modes"]["optimize_code"],
+        name="array_expansion",
+        default=20,
+    )
+
+    global ocm_init_max_depth
+    ocm_init_max_depth, _ = _load_config_value(
+        config_file=config_file["chat_modes"]["optimize_code"],
+        name="init_max_depth",
+        default=10,
+    )
+
+    global ocm_partial_equivalence_check
+    ocm_partial_equivalence_check, _ = _load_config_value(
+        config_file=config_file["chat_modes"]["optimize_code"],
+        name="partial_equivalence_check",
+        default="basic",
+    )
+
+    global fix_code_max_attempts
+    fix_code_max_attempts = int(
+        _load_config_real_number(
+            config_file=config_file["chat_modes"]["generate_solution"],
+            name="max_attempts",
+            default=10,
+        )
     )
 
     # Load the custom ai configs.

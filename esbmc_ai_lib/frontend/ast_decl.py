@@ -28,15 +28,6 @@ class Declaration(object):
             cursor=cursor,
         )
 
-    def is_equivalent(self, other: object) -> bool:
-        """Checks if this is the same declaration as `other`, but not location."""
-        # TODO Remove me
-        return (
-            isinstance(other, Declaration)
-            and self.name == other.name
-            and self.type_name == other.type_name
-        )
-
     @override
     def __str__(self) -> str:
         return self.name + ":" + self.type_name
@@ -87,6 +78,10 @@ class Declaration(object):
     def __hash__(self):
         return self._get_attr_hashes(self.__dict__.copy())
 
+    def is_pointer_type(self) -> bool:
+        """Checks if the type name is a pointer type."""
+        return self.type_name.endswith(("*", "[]"))
+
 
 class FunctionDeclaration(Declaration):
     def __init__(
@@ -99,6 +94,16 @@ class FunctionDeclaration(Declaration):
         super().__init__(name, type_name, cursor=cursor)
         self.args: list[Declaration] = args
 
+    def returns_pointer(self) -> bool:
+        # Call the super method, because it checks the type_name which
+        # for function declarations is the return type.
+        return super().is_pointer_type()
+
+    @override
+    def is_pointer_type(self) -> bool:
+        "Functions cannot be pointers."
+        return False
+
     @override
     @classmethod
     def from_cursor(cls, cursor: Cursor) -> "FunctionDeclaration":
@@ -108,17 +113,6 @@ class FunctionDeclaration(Declaration):
             args=[Declaration.from_cursor(arg) for arg in cursor.get_arguments()],
             cursor=cursor,
         )
-
-    @override
-    def is_equivalent(self, other: object) -> bool:
-        if not isinstance(other, FunctionDeclaration):
-            return False
-
-        args_equal: bool = True
-        for arg1, arg2 in zip(self.args, other.args):
-            args_equal &= arg1 == arg2
-
-        return args_equal and super().is_equivalent(other)
 
     @override
     def __eq__(self, __value: object) -> bool:
@@ -231,26 +225,15 @@ class TypeDeclaration(Declaration):
                 return ""
         return ""
 
-    def is_anonymous(self) -> bool:
-        """If the type has no name associated, it is anonymous."""
-        # TODO: in C this is not what anonymous structs are. Need to remove this method.
-        return len(self.name) == 0
-
     def is_typedef(self) -> bool:
         """If the type has a typedef, the name will be the name of the original
         construct."""
         return len(self.type_name) > 0
 
     @override
-    def is_equivalent(self, other: object) -> bool:
-        if not isinstance(other, TypeDeclaration):
-            return False
-
-        # Check elements
-        equal_elements: bool = True
-        for e1, e2 in zip(self.elements, other.elements):
-            equal_elements = equal_elements and e1.is_equivalent(e2)
-        return equal_elements and super().is_equivalent(other)
+    def is_pointer_type(self) -> bool:
+        """Type declarations cannot be pointers."""
+        return False
 
     @override
     def __eq__(self, __value: object) -> bool:
@@ -342,6 +325,11 @@ class TypedefDeclaration(Declaration):
     @override
     def __str__(self) -> str:
         return f"typedef ({self.name}) {self.underlying_type}"
+
+    @override
+    def is_pointer_type(self) -> bool:
+        """Typedef declarations are a type declaration so they don't have pointers."""
+        return False
 
 
 class PreProcessingDirective(object):

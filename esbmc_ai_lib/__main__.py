@@ -27,9 +27,10 @@ from esbmc_ai_lib.commands import (
     HelpCommand,
     ExitCommand,
     OptimizeCodeCommand,
-    # VerifyCodeCommand,
 )
 
+from esbmc_ai_lib import version
+from esbmc_ai_lib.term import get_terminal_width
 from esbmc_ai_lib.loading_widget import LoadingWidget, create_loading_widget
 from esbmc_ai_lib.user_chat import UserChat
 from esbmc_ai_lib.logging import printv, printvv
@@ -48,11 +49,20 @@ exit_command: ExitCommand = ExitCommand()
 
 chat: UserChat
 
-HELP_MESSAGE: str = """Tool that passes ESBMC output into ChatGPT and allows for natural language
-explanations. Type /help in order to view available commands."""
+AUTHORS: list[str] = ["Yiannis Charalambous"]
+
+PROLOGUE: str = f"ESBMC-AI\nMade by {', '.join(AUTHORS)}"
+
+HELP_MESSAGE: str = f"""{PROLOGUE}
+
+Tool that passes ESBMC output into an LLM and allows for natural language
+explanations among other things. Type /help in order to view available commands."""
 
 ESBMC_HELP: str = """Additional ESBMC Arguments - The following are useful
 arguments that can be added after the filename to modify ESBMC functionality.
+Use the -a or --append parameter to append the options to the ones defined in the
+config. 
+
 For all the options, run ESBMC with -h as a parameter:
 
   --compact-trace                  add trace information to output
@@ -81,20 +91,6 @@ For all the options, run ESBMC with -h as a parameter:
   --error-label label              check if label is unreachable
   --force-malloc-success           do not check for malloc/new failure
 """
-
-
-def init_check_health(verbose: bool) -> None:
-    def printv(m) -> None:
-        if verbose:
-            print(m)
-
-    printv("Performing init health check...")
-    # Check that the .env file exists.
-    if os.path.exists(".env"):
-        printv("Environment file has been located")
-    else:
-        print("Error: .env file is not found in project directory")
-        sys.exit(3)
 
 
 def check_health() -> None:
@@ -161,7 +157,7 @@ def init_commands() -> None:
 
 def _run_command_mode(
     command: ChatCommand,
-    args: list[str],
+    args: str,
     esbmc_output: str,
     source_code: str,
 ) -> None:
@@ -170,6 +166,7 @@ def _run_command_mode(
             file_name=get_main_source_file_path(),
             source_code=source_code,
             esbmc_output=esbmc_output,
+            max_retries=config.fix_code_max_attempts,
         )
 
         if error:
@@ -178,10 +175,11 @@ def _run_command_mode(
         else:
             print(solution)
     elif command == optimize_code_command:
+        function_names: list[str] = args.split(",")
         error, solution = optimize_code_command.execute(
             file_path=get_main_source_file_path(),
             source_code=source_code,
-            function_names=args,
+            function_names=function_names if len(args) > 0 else [],
         )
 
         print(solution)
@@ -209,12 +207,11 @@ def main() -> None:
     init_commands_list()
 
     parser = argparse.ArgumentParser(
-        prog="ESBMC-ChatGPT",
+        # prog="ESBMC-AI",
         description=HELP_MESSAGE,
-        # argparse.RawDescriptionHelpFormatter allows the ESBMC_HELP to display
-        # properly.
+        # argparse.RawDescriptionHelpFormatter allows the ESBMC_HELP to display properly.
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"Made by Yiannis Charalambous\n\n{ESBMC_HELP}",
+        epilog="GitHub: https://github.com/Yiannis128/esbmc-ai",
     )
 
     parser.add_argument(
@@ -225,7 +222,14 @@ def main() -> None:
     parser.add_argument(
         "remaining",
         nargs=argparse.REMAINDER,
-        help="Any arguments after the filename will be passed to ESBMC as parameters.",
+        help="Any arguments after the filename will be passed to ESBMC as parameters. Any ESBMC-AI parameters will need to be included before the filename.",
+    )
+
+    parser.add_argument(
+        "-e",
+        "--env",
+        default=None,
+        help="Override the default .env file location, which is in the current working directory.",
     )
 
     parser.add_argument(
@@ -254,24 +258,42 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "--version",
+        action="version",
+        version=f"ESBMC-AI v{version}",
+    )
+
+    command_mode_parser = parser.add_argument_group(
+        title="Command Mode",
+        description="Run the program in command mode, this will skip User Chat Mode and automatically run a command. The program will exit after the command ends with an exit code.",
+    )
+
+    command_mode_parser.add_argument(
         "-c",
         "--command",
         choices=command_names,
         metavar="",
-        help="Runs the program in command mode, it will exit after the command ends with an exit code. Options: {"
-        + ", ".join(command_names)
-        + "}",
+        help="Specify the command to run. Options: {" + ", ".join(command_names) + "}",
+    )
+
+    command_mode_parser.add_argument(
+        "-p",
+        "--params",
+        default="",
+        help="Arguments for the current command, supplied using the -c or --command parameter.",
+    )
+
+    parser.add_argument_group(
+        title="ESBMC",
+        description=ESBMC_HELP,
     )
 
     args = parser.parse_args()
 
-    print("ESBMC-AI")
-    print("Made by Yiannis Charalambous")
+    print(PROLOGUE)
     print()
 
-    init_check_health(args.verbose)
-
-    config.load_envs()
+    config.load_envs(args.env)
     config.load_config(config.cfg_path)
     config.load_args(args)
 
@@ -299,10 +321,10 @@ def main() -> None:
     anim.stop()
 
     # Print verbose lvl 2
-    printvv("-" * os.get_terminal_size().columns)
+    printvv("-" * get_terminal_width())
     printvv(esbmc_output)
     printvv(esbmc_err_output)
-    printvv("-" * os.get_terminal_size().columns)
+    printvv("-" * get_terminal_width())
 
     # ESBMC will output 0 for verification success and 1 for verification
     # failed, if anything else gets thrown, it's an ESBMC error.
@@ -325,7 +347,7 @@ def main() -> None:
                 if command == command_name:
                     _run_command_mode(
                         command=commands[idx],
-                        args=[],  # NOTE: Currently not supported...
+                        args=args.params,
                         source_code=get_main_source_file().content,
                         esbmc_output=esbmc_output,
                     )
@@ -391,6 +413,7 @@ def main() -> None:
                     file_name=get_main_source_file_path(),
                     source_code=get_main_source_file().content,
                     esbmc_output=esbmc_output,
+                    max_retries=config.fix_code_max_attempts,
                 )
 
                 if not error:

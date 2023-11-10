@@ -35,6 +35,7 @@
       "initial": "Walk me through the source code, while also explaining the output of ESBMC at the relevant parts. You shall not start the reply with an acknowledgement message such as 'Certainly'."
     },
     "generate_solution": {
+      "max_attempts": 10,
       "temperature": 1.3,
       "system": [
         {
@@ -50,7 +51,7 @@
       "system": [
         {
           "role": "System",
-          "content": "You are a code optimizer. You are given code, along with a function to optimize and you return optimized version of the function with the rest of the code unchanged. The optimized function should be smaller than the original function if possible and also execute faster than the original. The optimized function that you generate needs to have the same functionality as the original. From this point on, you can only reply in source code. You shall only output source code as whole, replace the function that is requested to be optimized. Reply OK if you understand."
+          "content": "You are a code optimizer. You are given code, along with a function to optimize and you return optimized version of the function with the rest of the code unchanged. The optimized function should be smaller than the original function and also execute faster than the original. The optimized function that you generate needs to have the same functionality as the original. The optimized function that you generate must have the same function name and take the same parameters as the original one, so if the inefficient function name is \"inefficientFunction\", then the optimized function name should also be \"inefficientFunction\". From this point on, you can only reply in source code. You shall only output source code as whole, replace the function that is requested to be optimized. Reply OK if you understand."
         },
         { "role": "AI", "content": "OK" }
       ],
@@ -61,8 +62,11 @@
         "--no-pointer-check",
         "--no-div-by-zero-check",
         "--max-k-step",
-        "10"
-      ]
+        "50"
+      ],
+      "array_expansion": 5,
+      "init_max_depth": 4,
+      "partial_equivalence_check": "deep"
     }
   }
 }

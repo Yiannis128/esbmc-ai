@@ -7,7 +7,7 @@ import clang.native
 import clang.cindex as cindex
 from clang.cindex import Config
 
-from esbmc_ai_lib.frontend.c_types import is_primitive_type
+from esbmc_ai_lib.frontend.c_types import get_base_type, is_primitive_type
 
 from .ast_decl import *
 
@@ -271,9 +271,11 @@ class ClangAST(object):
 
         name: str = cursor.type.spelling
 
-        # Remove the tag type (first word) which should be struct/enum/union.
-        if not is_primitive_type(name):
-            name = name.split(" ", 1)[1]
+        # Remove the "tag" type (first word) which should be struct/enum/union. Create a
+        # temp Declaration because is_primitive_type accepts declaration (but uses type_name)
+        # inside anyway.
+        if not is_primitive_type(Declaration("", name)):
+            name = get_base_type(name)
 
         d: Declaration = Declaration(
             name=name,

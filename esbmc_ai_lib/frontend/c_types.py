@@ -1,3 +1,6 @@
+from esbmc_ai_lib.frontend.ast_decl import Declaration
+
+
 _primitives_base_defaults: list[str] = [
     # Bool
     "bool",
@@ -41,5 +44,16 @@ _primitives_base_defaults: list[str] = [
 """Assign the following values for each primitive data type."""
 
 
-def is_primitive_type(type_name: str) -> bool:
-    return type_name in _primitives_base_defaults
+def get_base_type(type_name: str) -> str:
+    type_name = type_name.replace("*", "").replace("[]", "").strip()
+    # FIXME This is to get rid of modifiers such as const. But this REALLY needs to be replaced
+    # with tokenization because of the fact that such keywords can vary in position.
+    spl = type_name.split(" ")
+    if len(spl) > 1:
+        type_name = spl[1]
+    return type_name
+
+
+def is_primitive_type(d: Declaration) -> bool:
+    # Strip pointer and array info before checking if is primitive type.
+    return get_base_type(d.type_name) in _primitives_base_defaults

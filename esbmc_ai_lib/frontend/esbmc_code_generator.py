@@ -1,12 +1,14 @@
 # Author: Yiannis Charalambous
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Literal
 
 import clang.cindex as cindex
 
+import esbmc_ai_lib.config as config
+
 from .ast import ClangAST
 from .ast_decl import Declaration, TypeDeclaration, FunctionDeclaration
-from .c_types import is_primitive_type
+from .c_types import is_primitive_type, get_base_type
 
 
 """Note about how `assign_to` and `init` work:
@@ -78,7 +80,20 @@ class ESBMCCodeGenerator(object):
         from https://github.com/esbmc/esbmc/blob/master/src/clang-c-frontend/clang_c_language.cpp
         """
 
-        value: str = ESBMCCodeGenerator._primitives_base_defaults[d.type_name]
+        base_type_name: str = get_base_type(d.type_name)
+        base_value: str = ESBMCCodeGenerator._primitives_base_defaults[base_type_name]
+
+        type_name: str = base_type_name
+        value: str = base_value
+        if d.is_pointer_type():
+            # No difference if adding [] or *. Pointer means initialize continuous memory.
+            type_name += "*"
+            value = (
+                f"({type_name})"
+                + "{"
+                + ",".join([base_value] * config.ocm_array_expansion)
+                + "}"
+            )
 
         if assign_to == None:
             return value
@@ -86,32 +101,47 @@ class ESBMCCodeGenerator(object):
             if assign_to == "":
                 return value + ";"
             else:
-                return (d.type_name + " " if init else "") + f"{assign_to} = {value};"
+                return (type_name + " " if init else "") + f"{assign_to} = {value};"
 
     def statement_type_construct(
         self,
-        d: TypeDeclaration,
+        d_type: TypeDeclaration,
+        init_type: Literal["value", "ptr"],
         assign_to: Optional[str] = None,
         init: bool = False,
         primitive_assignment_fn: Optional[Callable[[Declaration], str]] = None,
+        max_depth: int = 5,
+        _current_depth: int = -1,
     ) -> str:
-        """Constructs a statement to  that is represented by decleration d."""
-        assert d.cursor
+        """Constructs a statement that is represented by decleration d. Need ptr information
+        since TypeDeclaration does not carry such info (Declaration) base type does."""
+        assert d_type.cursor
+
+        _current_depth += 1
 
         cmd: str
 
         # Check if primitive type and return nondet value.
-        if len(list(d.cursor.get_children())) == 0:
-            return self.statement_primitive_construct(d)
+        if len(list(d_type.cursor.get_children())) == 0:
+            return self.statement_primitive_construct(d_type)
 
-        cmd = "(" + (d.type_name if d.is_typedef() else f"struct {d.name}") + "){"
+        if d_type.is_typedef():
+            cmd = f"({d_type.type_name})" + "{"
+            raise NotImplementedError("Typedefs not implemented...")
+        else:
+            if init_type == "value":
+                cmd = f"({d_type.construct_type} {d_type.name})" + "{"
+            elif init_type == "ptr":
+                cmd = f"({d_type.construct_type} {d_type.name}*)" + "{"
+            else:
+                raise ValueError(f"init_type has an invalid value: {init_type}")
 
         # Loop through each element of the data type.
         elements: list[str] = []
-        for element in d.elements:
+        for element in d_type.elements:
             # Check if element is a primitive type. If not, it will need to be
             # further broken.
-            if is_primitive_type(element.type_name):
+            if is_primitive_type(element):
                 element_code: str
                 # Call primitive assignment function if available in order to
                 # assign a value. If not, then assign primitive using default
@@ -133,22 +163,34 @@ class ESBMCCodeGenerator(object):
                     type_declaration != None
                 ), f"Reference for type {element} could not be found"
 
-                # Get decleration in AST
-                element_code: str = self.statement_type_construct(type_declaration)
-                elements.append(element_code)
+                # Check if max depth is reached. If it has, then do not init pointer
+                # elements.
+                if _current_depth < max_depth or not element.is_pointer_type():
+                    # Get decleration in AST
+                    element_code: str = self.statement_type_construct(
+                        d_type=type_declaration,
+                        init_type="ptr" if element.is_pointer_type() else "value",
+                        max_depth=max_depth,
+                        _current_depth=_current_depth,
+                        primitive_assignment_fn=primitive_assignment_fn,
+                    )
+                    elements.append(element_code)
+                else:
+                    elements.append("NULL")
 
+        # Join the elements of the type initialization.
         cmd += ",".join(elements) + "}"
 
         # If this construction should be an assignment call.
         if assign_to != None:
             if assign_to == "":
                 cmd = cmd + ";"
-            elif d.type_name != "void":
+            elif d_type.type_name != "void":
                 # Check if assignment variable should be initialized.
                 if init:
-                    assign_type: str = d.type_name
-                    if d.type_name == "":
-                        assign_type = f"{d.construct_type} {d.name}"
+                    assign_type: str = d_type.type_name
+                    if d_type.type_name == "":
+                        assign_type = f"{d_type.construct_type} {d_type.name}"
 
                     cmd = f"{assign_type} {assign_to} = {cmd};"
                 else:
@@ -180,13 +222,15 @@ class ESBMCCodeGenerator(object):
                 assert arg.cursor
 
                 # Check if primitive type.
-                if is_primitive_type(arg.type_name):
+                if is_primitive_type(arg):
                     arg_cmds.append(self.statement_primitive_construct(arg))
                 else:
                     # Current cursor kind is CursorKind.PARAM_DECL, need to
                     # get underlying type.
                     underlying_type: cindex.Type = arg.cursor.type.get_canonical()
                     underlying_cursor: cindex.Cursor = underlying_type.get_declaration()
+
+                    arg_decl: Declaration = Declaration.from_cursor(underlying_cursor)
 
                     arg_type: Optional[
                         TypeDeclaration
@@ -199,7 +243,12 @@ class ESBMCCodeGenerator(object):
                             + " "
                             + arg.type_name
                         )
-                    arg_cmds.append(self.statement_type_construct(d=arg_type))
+                    arg_cmds.append(
+                        self.statement_type_construct(
+                            d_type=arg_type,
+                            init_type="ptr" if arg_decl.is_pointer_type() else "value",
+                        )
+                    )
 
             cmd += ", ".join(arg_cmds) + ")"
 
