@@ -272,6 +272,7 @@ class AIModels(Enum):
     GPT_3_16K = AIModelOpenAI(name="gpt-3.5-turbo-16k", tokens=16384)
     GPT_4 = AIModelOpenAI(name="gpt-4", tokens=8192)
     GPT_4_32K = AIModelOpenAI(name="gpt-4-32k", tokens=32768)
+    GPT_4_TURBO_PREVIEW= AIModelOpenAI(name="gpt-4-turbo-preview", tokens=128000)    
     FALCON_7B = AIModelTextGen(
         name="falcon-7b",
         tokens=8192,
