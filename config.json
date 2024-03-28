@@ -3,6 +3,7 @@
   "ai_custom": {},
   "esbmc_path": "~/ESBMC/bin/esbmc",
   "allow_successful": true,
+  "verifier_timeout": 90,
   "esbmc_params": [
     "--interval-analysis",
     "--goto-unwind",
@@ -18,7 +19,10 @@
     "--context-bound",
     "2"
   ],
-  "consecutive_prompt_delay": 20,
+  "requests": {
+    "max_tries": 5,
+    "timeout": 60
+  },
   "temp_auto_clean": false,
   "temp_file_dir": "./temp",
   "loading_hints": true,
@@ -254,5 +258,6 @@
         }
       ]
     }      
+    }
   }
 }

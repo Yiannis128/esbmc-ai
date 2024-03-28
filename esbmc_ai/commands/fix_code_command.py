@@ -1,7 +1,6 @@
 # Author: Yiannis Charalambous
 
 from os import get_terminal_size
-from time import sleep
 from typing import Any, Tuple
 from typing_extensions import override
 from langchain.schema import AIMessage, HumanMessage
@@ -49,15 +48,6 @@ class FixCodeCommand(ChatCommand):
         source_code: str = kwargs["source_code"]
         esbmc_output: str = kwargs["esbmc_output"]
 
-        wait_time: int = int(config.consecutive_prompt_delay)
-        # Create time left animation to show how much time left between API calls
-        # This is done by creating a list of all the numbers to be displayed and
-        # setting the animation delay to 1 second.
-        wait_anim = create_loading_widget(
-            anim_speed=1,
-            animation=[str(num) for num in range(wait_time, 0, -1)],
-        )
-
         # Parse the esbmc output here and determine what "Scenario" to use.
         scenario: str = self._resolve_scenario(esbmc_output)
 
@@ -71,6 +61,8 @@ class FixCodeCommand(ChatCommand):
         llm = config.ai_model.create_llm(
             api_keys=config.api_keys,
             temperature=config.chat_prompt_generator_mode.temperature,
+            requests_max_tries=config.requests_max_tries,
+            requests_timeout=config.requests_timeout,
         )
 
         solution_generator = SolutionGenerator(
@@ -116,6 +108,7 @@ class FixCodeCommand(ChatCommand):
                 source_code=str(response),
                 esbmc_params=config.esbmc_params,
                 auto_clean=config.temp_auto_clean,
+                timeout=config.verifier_timeout,
             )
             self.anim.stop()
 
@@ -133,9 +126,6 @@ class FixCodeCommand(ChatCommand):
             print(f"Failure {idx+1}/{max_retries}: Retrying...")
             # If final iteration no need to sleep.
             if idx < max_retries - 1:
-                wait_anim.start(f"Sleeping due to rate limit:")
-                sleep(config.consecutive_prompt_delay)
-                wait_anim.stop()
 
                 # Inform solution generator chat about the ESBMC response.
                 if exit_code != 1:

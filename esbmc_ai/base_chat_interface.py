@@ -3,7 +3,6 @@
 from abc import abstractmethod
 
 from langchain.base_language import BaseLanguageModel
-from langchain_community.callbacks import get_openai_callback
 from langchain.schema import (
     AIMessage,
     BaseMessage,
@@ -12,11 +11,9 @@ from langchain.schema import (
     PromptValue,
 )
 
-from openai import InternalServerError
-
-from .config import ChatPromptSettings
+from esbmc_ai.config import ChatPromptSettings
 from .chat_response import ChatResponse, FinishReason
-from .ai_models import AIModel, AIModelOpenAI
+from .ai_models import AIModel
 
 
 class BaseChatInterface(object):

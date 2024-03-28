@@ -3,13 +3,16 @@
 from abc import abstractmethod
 from typing import Any, Iterable, Union
 from enum import Enum
+from pydantic.v1.types import SecretStr
 from typing_extensions import override
 
 from langchain.prompts import PromptTemplate
 from langchain.base_language import BaseLanguageModel
 
 from langchain_openai import ChatOpenAI
-from langchain_community.llms import HuggingFaceTextGenInference
+from langchain_community.llms.huggingface_text_gen_inference import (
+    HuggingFaceTextGenInference,
+)
 
 from langchain.prompts.chat import (
     AIMessagePromptTemplate,
@@ -43,6 +46,8 @@ class AIModel(object):
         self,
         api_keys: APIKeyCollection,
         temperature: float = 1.0,
+        requests_max_tries: int = 5,
+        requests_timeout: float = 60,
     ) -> BaseLanguageModel:
         """Initializes a large language model model with the provided parameters."""
         raise NotImplementedError()
@@ -144,12 +149,16 @@ class AIModelOpenAI(AIModel):
         self,
         api_keys: APIKeyCollection,
         temperature: float = 1.0,
+        requests_max_tries: int = 5,
+        requests_timeout: float = 60,
     ) -> BaseLanguageModel:
         return ChatOpenAI(
             model=self.name,
-            api_key=api_keys.openai,
+            api_key=SecretStr(api_keys.openai),
             max_tokens=None,
             temperature=temperature,
+            max_retries=requests_max_tries,
+            timeout=requests_timeout,
             model_kwargs={},
         )
 
@@ -205,6 +214,8 @@ class AIModelTextGen(AIModel):
         self,
         api_keys: APIKeyCollection,
         temperature: float = 1.0,
+        requests_max_tries: int = 5,
+        requests_timeout: float = 60,
     ) -> BaseLanguageModel:
         return HuggingFaceTextGenInference(
             client=None,
@@ -218,6 +229,8 @@ class AIModelTextGen(AIModel):
             max_new_tokens=5000,
             temperature=temperature,
             stop_sequences=self.stop_sequences,
+            max_retries=requests_max_tries,
+            timeout=requests_timeout,
         )
 
     @override

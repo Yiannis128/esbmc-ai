@@ -28,8 +28,6 @@ class HelpCommand(ChatCommand):
         print()
         print("Useful AI Questions:")
         print("1) How can I correct this code?")
-        print("2) Show me the corrected code.")
-        # TODO This needs to be uncommented as soon as ESBMC-AI can detect this query
-        # and trigger ESBMC to verify the code.
-        # print("3) Can you verify this corrected code with ESBMC again?")
+        print("2) What is the line with the error?")
+        print("3) What is the exact error?")
         print()

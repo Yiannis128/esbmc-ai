@@ -5,7 +5,6 @@
 import os
 import re
 import sys
-from time import sleep
 
 # Enables arrow key functionality for input(). Do not remove import.
 #import readline
@@ -272,6 +271,7 @@ def main() -> None:
     exit_code, esbmc_output, esbmc_err_output = esbmc(
         path=get_main_source_file_path(),
         esbmc_params=config.esbmc_params,
+        timeout=config.verifier_timeout,
     )
     anim.stop()
 
@@ -312,6 +312,8 @@ def main() -> None:
     chat_llm: BaseLanguageModel = config.ai_model.create_llm(
         api_keys=config.api_keys,
         temperature=config.chat_prompt_user_mode.temperature,
+        requests_max_tries=config.requests_max_tries,
+        requests_timeout=config.requests_timeout,
     )
     
     printv("Creating user chat")
@@ -404,9 +406,7 @@ def main() -> None:
                 anim.start(
                     "Message stack limit reached. Shortening message stack... Please Wait"
                 )
-                sleep(config.consecutive_prompt_delay)
                 chat.compress_message_stack()
-                sleep(config.consecutive_prompt_delay)
                 anim.stop()
                 continue
             else:

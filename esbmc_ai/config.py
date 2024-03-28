@@ -38,8 +38,11 @@ esbmc_params: list[str] = [
 
 temp_auto_clean: bool = True
 temp_file_dir: str = "."
-consecutive_prompt_delay: float = 20.0
 ai_model: AIModel = AIModels.GPT_3.value
+
+requests_max_tries: int = 5
+requests_timeout: float = 60
+verifier_timeout: float = 60
 
 loading_hints: bool = False
 allow_successful: bool = False
@@ -285,22 +288,6 @@ def _load_ai_data(config: dict) -> None:
         scenarios=fcm_scenarios,
     )
 
-    global chat_prompt_optimize_code
-    chat_prompt_optimize_code = ChatPromptSettings(
-        system_messages=AIAgentConversation.load_from_config(
-            config["chat_modes"]["optimize_code"]["system"]
-        ),
-        initial_prompt=config["chat_modes"]["optimize_code"]["initial"],
-        temperature=config["chat_modes"]["optimize_code"]["temperature"],
-    )
-
-    global esbmc_params_optimize_code
-    esbmc_params_optimize_code, _ = _load_config_value(
-        config["chat_modes"]["optimize_code"],
-        "esbmc_params",
-        esbmc_params_optimize_code,
-    )
-
 
 def _load_config_value(
     config_file: dict, name: str, default: object = None
@@ -357,11 +344,27 @@ def load_config(file_path: str) -> None:
         esbmc_params,
     )
 
-    global consecutive_prompt_delay
-    consecutive_prompt_delay = _load_config_real_number(
-        config_file,
-        "consecutive_prompt_delay",
-        consecutive_prompt_delay,
+    global requests_max_tries
+    requests_max_tries = int(
+        _load_config_real_number(
+            config_file=config_file["requests"],
+            name="max_tries",
+            default=requests_max_tries,
+        )
+    )
+
+    global requests_timeout
+    requests_timeout = _load_config_real_number(
+        config_file=config_file["requests"],
+        name="timeout",
+        default=requests_timeout,
+    )
+
+    global verifier_timeout
+    verifier_timeout = _load_config_real_number(
+        config_file=config_file,
+        name="verifier_timeout",
+        default=verifier_timeout,
     )
 
     global temp_auto_clean
