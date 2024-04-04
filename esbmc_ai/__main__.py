@@ -31,7 +31,7 @@ from esbmc_ai.commands import (
 
 from esbmc_ai.loading_widget import LoadingWidget, create_loading_widget
 from esbmc_ai.user_chat import UserChat
-from esbmc_ai.logging import printv, printvv
+from esbmc_ai.logging import print_horizontal_line, printv, printvv
 from esbmc_ai.esbmc_util import esbmc
 from esbmc_ai.chat_response import FinishReason, ChatResponse
 from esbmc_ai.ai_models import _ai_model_names
@@ -224,6 +224,14 @@ def main() -> None:
     )
 
     parser.add_argument(
+        "-r",
+        "--raw-conversation",
+        action="store_true",
+        default=False,
+        help="Show the raw conversation at the end of a command. Good for debugging...",
+    )
+
+    parser.add_argument(
         "-a",
         "--append",
         action="store_true",
@@ -253,6 +261,9 @@ def main() -> None:
 
     check_health()
 
+    printv(f"Source code format: {config.source_code_format}")
+    printv(f"ESBMC output type: {config.esbmc_output_type}")
+
     anim: LoadingWidget = create_loading_widget()
 
     # Read the source code and esbmc output.
@@ -268,7 +279,7 @@ def main() -> None:
         set_main_source_file(SourceFile(args.filename, file.read()))
 
     anim.start("ESBMC is processing... Please Wait")
-    exit_code, esbmc_output, esbmc_err_output = esbmc(
+    exit_code, esbmc_output = esbmc(
         path=get_main_source_file_path(),
         esbmc_params=config.esbmc_params,
         timeout=config.verifier_timeout,
@@ -276,10 +287,9 @@ def main() -> None:
     anim.stop()
 
     # Print verbose lvl 2
-    printvv("-" * os.get_terminal_size().columns)
+    print_horizontal_line(2)
     printvv(esbmc_output)
-    printvv(esbmc_err_output)
-    printvv("-" * os.get_terminal_size().columns)
+    print_horizontal_line(2)
 
     # ESBMC will output 0 for verification success and 1 for verification
     # failed, if anything else gets thrown, it's an ESBMC error.
@@ -289,7 +299,7 @@ def main() -> None:
         sys.exit(0)
     elif exit_code != 0 and exit_code != 1:
         print(f"ESBMC exit code: {exit_code}")
-        print(f"ESBMC Output:\n\n{esbmc_err_output}")
+        print(f"ESBMC Output:\n\n{esbmc_output}")
         sys.exit(1)
 
     # Command mode: Check if command is called and call it.

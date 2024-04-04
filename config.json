@@ -19,7 +19,9 @@
     "--context-bound",
     "2"
   ],
-  "requests": {
+  "esbmc_output_type": "vp",
+  "source_code_format": "full",
+  "llm_requests": {
     "max_tries": 5,
     "timeout": 60
   },
@@ -69,6 +71,7 @@
       ]
     },
     "generate_solution": {
+      "max_attempts": 5,
       "temperature": 1.3,
       "scenarios": {
         "null pointer":{

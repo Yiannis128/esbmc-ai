@@ -39,3 +39,23 @@ def get_main_source_file() -> SourceFile:
 def get_source_files() -> list[SourceFile]:
     global _source_files
     return list(_source_files)
+
+
+def apply_line_patch(source_code: str, patch: str, start: int, end: int) -> str:
+    """Applies a patch to the source code.
+
+    To replace a single line, start and end are equal.
+
+    Args:
+        * source_code - The source code to apply the patch to.
+        * patch - Can be a line or multiple lines but will replace the start and
+        end region defined.
+        * start - Line index to mark start of replacement.
+        * end - Marks the end of the region where the patch will be applied to.
+        End is non-inclusive."""
+    assert (
+        start <= end
+    ), f"start ({start}) needs to be less than or equal to end ({end})"
+    lines: list[str] = source_code.splitlines()
+    lines = lines[:start] + [patch] + lines[end + 1 :]
+    return "\n".join(lines)

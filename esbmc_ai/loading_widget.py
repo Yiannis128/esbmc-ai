@@ -65,6 +65,8 @@ class LoadingWidget(object):
         self.thread.start()
 
     def stop(self) -> None:
+        if not config.loading_hints:
+            return
         self.done = True
         # Block until end.
         if self.thread:

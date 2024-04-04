@@ -79,3 +79,45 @@ def test_send_message(setup) -> None:
     assert chat_responses[0].message.content == responses[0]
     assert chat_responses[1].message.content == responses[1]
     assert chat_responses[2].message.content == responses[2]
+
+
+def test_apply_template() -> None:
+    ai_model: AIModel = AIModel("test", 1024)
+
+    system_messages: list[BaseMessage] = [
+        SystemMessage(content="This is a {source_code} message"),
+        SystemMessage(content="Replace with {esbmc_output} message"),
+        SystemMessage(content="{source_code}{esbmc_output}"),
+    ]
+
+    responses: list[str] = [
+        "This is a replaced message",
+        "Replace with {esbmc_output} message",
+        "replaced{esbmc_output}",
+        "This is a replaced message",
+        "Replace with also replaced message",
+        "replacedalso replaced",
+    ]
+    llm: FakeListLLM = FakeListLLM(responses=responses)
+
+    chat: BaseChatInterface = BaseChatInterface(
+        ai_model_agent=ChatPromptSettings(
+            AIAgentConversation.from_seq(system_messages),
+            initial_prompt="{source_code}{esbmc_output}",
+            temperature=1.0,
+        ),
+        ai_model=ai_model,
+        llm=llm,
+    )
+
+    chat.apply_template_value(source_code="replaced")
+
+    assert chat._system_messages[0].content == responses[0]
+    assert chat._system_messages[1].content == responses[1]
+    assert chat._system_messages[2].content == responses[2]
+
+    chat.apply_template_value(esbmc_output="also replaced")
+
+    assert chat._system_messages[0].content == responses[3]
+    assert chat._system_messages[1].content == responses[4]
+    assert chat._system_messages[2].content == responses[5]

@@ -11,7 +11,7 @@ from typing import Any, NamedTuple, Optional, Union, Sequence
 from dataclasses import dataclass
 from langchain.schema import BaseMessage
 
-from .logging import *
+from esbmc_ai.logging import printv, set_verbose
 from .ai_models import *
 from .api_key_collection import APIKeyCollection
 from .chat_response import json_to_base_messages
@@ -40,12 +40,19 @@ temp_auto_clean: bool = True
 temp_file_dir: str = "."
 ai_model: AIModel = AIModels.GPT_3.value
 
+esbmc_output_type: str = "full"
+source_code_format: str = "full"
+
+fix_code_max_attempts: int = 5
+
 requests_max_tries: int = 5
 requests_timeout: float = 60
 verifier_timeout: float = 60
 
 loading_hints: bool = False
 allow_successful: bool = False
+# Show the raw conversation after the command ends
+raw_conversation: bool = False
 
 cfg_path: str
 
@@ -344,10 +351,43 @@ def load_config(file_path: str) -> None:
         esbmc_params,
     )
 
+    global fix_code_max_attempts
+    fix_code_max_attempts = int(
+        _load_config_real_number(
+            config_file=config_file["chat_modes"]["generate_solution"],
+            name="max_attempts",
+            default=fix_code_max_attempts,
+        )
+    )
+
+    global source_code_format
+    source_code_format, _ = _load_config_value(
+        config_file=config_file,
+        name="source_code_format",
+        default=source_code_format,
+    )
+
+    if source_code_format not in ["full", "single"]:
+        raise Exception(
+            f"Source code format in the config is not valid: {source_code_format}"
+        )
+
+    global esbmc_output_type
+    esbmc_output_type, _ = _load_config_value(
+        config_file=config_file,
+        name="esbmc_output_type",
+        default=esbmc_output_type,
+    )
+
+    if esbmc_output_type not in ["full", "vp", "ce"]:
+        raise Exception(
+            f"ESBMC output type in the config is not valid: {esbmc_output_type}"
+        )
+
     global requests_max_tries
     requests_max_tries = int(
         _load_config_real_number(
-            config_file=config_file["requests"],
+            config_file=config_file["llm_requests"],
             name="max_tries",
             default=requests_max_tries,
         )
@@ -355,7 +395,7 @@ def load_config(file_path: str) -> None:
 
     global requests_timeout
     requests_timeout = _load_config_real_number(
-        config_file=config_file["requests"],
+        config_file=config_file["llm_requests"],
         name="timeout",
         default=requests_timeout,
     )
@@ -436,6 +476,9 @@ def load_args(args) -> None:
         else:
             print(f"Error: invalid --ai-model parameter {args.ai_model}")
             sys.exit(4)
+
+    global raw_conversation
+    raw_conversation = args.raw_conversation
 
     global esbmc_params
     # If append flag is set, then append.

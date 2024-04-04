@@ -3,8 +3,10 @@
 from typing_extensions import override
 
 from langchain.base_language import BaseLanguageModel
-from langchain.memory import ConversationSummaryMemory, ChatMessageHistory
-from langchain.schema import BaseMessage, PromptValue, SystemMessage
+from langchain.memory import ConversationSummaryMemory
+from langchain_community.chat_message_histories import ChatMessageHistory
+
+from langchain.schema import BaseMessage, SystemMessage
 
 from esbmc_ai.config import AIAgentConversation, ChatPromptSettings
 
@@ -36,33 +38,16 @@ class UserChat(BaseChatInterface):
         # The messsages for setting a new solution to the source code.
         self.set_solution_messages = set_solution_messages
 
-        self.set_template_value("source_code", self.source_code)
-        self.set_template_value("esbmc_output", self.esbmc_output)
+        self.apply_template_value(source_code=self.source_code)
+        self.apply_template_value(esbmc_output=self.esbmc_output)
 
     def set_solution(self, source_code: str) -> None:
         """Sets the solution to the problem ESBMC reported, this will inform the AI."""
 
-        self.set_template_value("source_code_solution", source_code)
+        for msg in self.set_solution_messages.messages:
+            self.push_to_message_stack(msg)
 
-        message_prompts: PromptValue = self.ai_model.apply_chat_template(
-            messages=self.set_solution_messages.messages,
-            **self.template_values,
-        )
-
-        for message in message_prompts.to_messages():
-            self.push_to_message_stack(message)
-
-    def set_optimized_solution(self, source_code: str) -> None:
-        # NOTE Here we use the same system message as `set_solution`.
-        self.set_template_value("source_code_solution", source_code)
-
-        message_prompts: PromptValue = self.ai_model.apply_chat_template(
-            messages=self.set_solution_messages.messages,
-            **self.template_values,
-        )
-
-        for message in message_prompts.to_messages():
-            self.push_to_message_stack(message)
+        self.apply_template_value(source_code_solution=source_code)
 
     @override
     def compress_message_stack(self) -> None:
