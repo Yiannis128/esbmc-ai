@@ -7,11 +7,11 @@ import re
 import sys
 
 # Enables arrow key functionality for input(). Do not remove import.
-import readline
+#import readline
 
 import argparse
 from langchain.base_language import BaseLanguageModel
-
+import langchain
 
 import esbmc_ai.config as config
 from esbmc_ai import __author__, __version__
@@ -88,7 +88,7 @@ def check_health() -> None:
     else:
         print(f"Error: ESBMC could not be found in {config.esbmc_path}")
         sys.exit(3)
-
+        
 
 def print_assistant_response(
     chat: UserChat,
@@ -174,7 +174,7 @@ def parse_command(user_prompt_string: str) -> tuple[str, list[str]]:
     command_args: list[str] = parsed_array[1:]
     return command, command_args
 
-
+   
 def main() -> None:
     init_commands_list()
 
@@ -325,7 +325,7 @@ def main() -> None:
         requests_max_tries=config.requests_max_tries,
         requests_timeout=config.requests_timeout,
     )
-
+    
     printv("Creating user chat")
     global chat
     chat = UserChat(
@@ -380,7 +380,7 @@ def main() -> None:
                     source_code=get_main_source_file().content,
                     esbmc_output=esbmc_output,
                 )
-
+                
                 if not error:
                     print(
                         "\n\nESBMC-AI: Here is the corrected code, verified with ESBMC:"
